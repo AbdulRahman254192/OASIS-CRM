@@ -1,360 +1,277 @@
 <?php
-// --- DATABASE CONNECTION & LOGIC ---
 include 'db.php';
+include 'header.php'; 
 
-$message = "";
+$notification = "";
 
-// Check if the form was submitted
+// --- 1. HANDLE CUSTOMER REGISTRATION ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_customer'])) {
+    $stmt = mysqli_prepare($conn, "INSERT INTO CUSTOMER (Name, Phone, Email, CNIC) VALUES (?, ?, ?, ?)");
+    mysqli_stmt_bind_param($stmt, "ssss", $_POST['cName'], $_POST['cPhone'], $_POST['cEmail'], $_POST['cCNIC']);
     
-    $name = $_POST['name'];
-    $email = $_POST['email'];
-    $phone = $_POST['phone'];
-    $address = $_POST['address'];
-    $cnic = $_POST['cnic'];
-    $nationality = $_POST['nationality'];
-
-    $insertSql = "INSERT INTO CUSTOMER (Name, Email, Phone, Address, CNIC, Nationality) VALUES (?, ?, ?, ?, ?, ?)";
-    $params = array($name, $email, $phone, $address, $cnic, $nationality);
-    
-    $insertStmt = sqlsrv_query($conn, $insertSql, $params);
-
-    if ($insertStmt === false) {
-        $message = "<div style='color:#ef4444; text-align:center; margin-bottom:20px; font-weight:bold;'>Error adding customer!</div>";
+    if (mysqli_stmt_execute($stmt)) {
+        $notification = "<div class='mb-6 rounded-lg border border-emerald-500 bg-emerald-500/10 p-4 text-center font-bold text-emerald-500'>✅ Customer Registered Successfully!</div>";
     } else {
-        $message = "<div style='color:#10b981; text-align:center; margin-bottom:20px; font-weight:bold;'>Customer added successfully!</div>";
+        $notification = "<div class='mb-6 rounded-lg border border-red-500 bg-red-500/10 p-4 text-center font-bold text-red-500'>❌ Error: " . mysqli_error($conn) . "</div>";
+    }
+    mysqli_stmt_close($stmt);
+}
+
+// --- 2. FETCH ALL BOOKINGS FOR THE DASHBOARD ---
+$bookingsArray = array();
+
+if(isset($conn)) {
+    $sql = "SELECT b.BookingID, c.Name, c.Email, r.RoomNumber, b.CheckInDate, b.CheckOutDate, b.TotalAmount, b.Status 
+            FROM BOOKING b 
+            JOIN CUSTOMER c ON b.CustomerID = c.CustomerID 
+            JOIN ROOM r ON b.RoomID = r.RoomID 
+            ORDER BY b.BookingID DESC";
+            
+    $result = mysqli_query($conn, $sql); 
+    
+    if ($result) {
+        while ($row = mysqli_fetch_assoc($result)) { 
+            $checkIn = $row['CheckInDate'] ?: 'N/A';
+            $checkOut = $row['CheckOutDate'] ?: 'N/A';
+            
+            $bookingsArray[] = array(
+                'id' => $row['BookingID'],
+                'customer_name' => $row['Name'],
+                'email' => $row['Email'] ?: 'No Email Provided',
+                'room_details' => 'Room ' . $row['RoomNumber'],
+                'check_in' => $checkIn,
+                'check_out' => $checkOut,
+                'amount' => $row['TotalAmount'] ?: 0,
+                'status' => $row['Status']
+            );
+        }
     }
 }
-
-// Bring in your master navigation here!
-include 'header.php'; 
 ?>
 
-<style>
-/* INDEX-SPECIFIC STYLES (Kept exactly as you designed them) */
-.hero {
-    min-height:100vh;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    text-align:center;
-    padding:120px 20px;
-    background:
-    linear-gradient(rgba(11,17,32,0.8),rgba(11,17,32,0.9)),
-    url('https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=1600&auto=format&fit=crop');
-    background-size:cover;
-    background-position:center;
-}
-
-.hero-content { max-width:900px; }
-.hero-content h1 { font-size:70px; line-height:1.1; margin-bottom:20px; }
-.hero-content span { color:#f59e0b; }
-.hero-content p { color:#cbd5e1; line-height:1.8; font-size:18px; margin-bottom:40px; }
-.hero-buttons { display:flex; justify-content:center; gap:20px; flex-wrap:wrap; }
-
-.btn {
-    padding:15px 35px;
-    border-radius:6px;
-    text-decoration:none;
-    font-weight:600;
-    transition:0.3s;
-    border: none;
-    cursor: pointer;
-    font-size: 16px;
-}
-
-.btn-primary { background:#f59e0b; color:black; }
-.btn-primary:hover { background:#ffbe3b; }
-.btn-secondary { border:2px solid #f59e0b; color:#f59e0b; background: transparent; }
-.btn-secondary:hover { background:#f59e0b; color:black; }
-
-/* STATS */
-.stats {
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-    gap:25px;
-    padding:60px;
-    background:#111827;
-}
-
-.stat-box {
-    background:#1e293b;
-    padding:35px;
-    text-align:center;
-    border-radius:10px;
-    border:1px solid rgba(245,158,11,0.2);
-    transition:0.3s;
-}
-
-.stat-box:hover { transform:translateY(-8px); border-color:#f59e0b; }
-.stat-box h2 { font-size:45px; color:#f59e0b; margin-bottom:10px; }
-.stat-box p { color:#cbd5e1; }
-
-/* SECTION */
-section { padding:100px 60px; }
-.section-title { text-align:center; margin-bottom:60px; }
-.section-title h2 { font-size:50px; color:#f59e0b; margin-bottom:15px; }
-.section-title p { color:#94a3b8; }
-
-/* CARDS */
-.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:30px; }
-.card { background:#1e293b; padding:30px; border-radius:12px; transition:0.4s; border:1px solid transparent; }
-.card:hover { transform:translateY(-10px); border:1px solid #f59e0b; }
-.card h3 { color:#f59e0b; margin-bottom:15px; font-size:24px; }
-.card p { color:#cbd5e1; line-height:1.8; }
-
-/* FORMS */
-.form-group { display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; }
-.form-control { flex: 1; padding: 15px; border: 1px solid rgba(245,158,11,0.2); border-radius: 6px; background: #0b1120; color: white; outline: none; font-size: 15px; min-width: 200px; }
-.form-control:focus { border-color: #f59e0b; }
-.form-control::placeholder { color: #64748b; }
-
-/* TABLES */
-.table-container { overflow-x:auto; }
-table { width:100%; border-collapse:collapse; background:#1e293b; border-radius:10px; overflow:hidden; }
-table th { background:#f59e0b; color:black; padding:18px; text-align: left; }
-table td { padding:18px; border-bottom:1px solid rgba(255,255,255,0.08); color:#cbd5e1; }
-table tr:hover { background:#334155; }
-
-/* ERD */
-.erd-box { text-align:center; }
-.erd-box img { width:100%; max-width:1200px; border-radius:12px; border:4px solid #f59e0b; box-shadow:0 0 30px rgba(245,158,11,0.2); }
-
-/* TIMELINE */
-.timeline { display:grid; gap:25px; }
-.timeline-item { background:#1e293b; padding:25px; border-left:5px solid #f59e0b; border-radius:8px; }
-.timeline-item h3 { color:#f59e0b; margin-bottom:10px; }
-
-/* RESPONSIVE */
-@media(max-width:768px){
-    .hero-content h1 { font-size:45px; }
-    section { padding:80px 20px; }
-    .section-title h2 { font-size:36px; }
-}
-</style>
-
-<div class="hero">
-    <div class="hero-content">
-        <h1>Dynamic <span>Hospitality</span><br>Management System</h1>
-        <p>A complete Hotel Management Database System designed using ERD concepts. The system manages rooms, bookings, loyalty programs, pricing rules, maintenance complaints, room suggestions, customers, staff, and payments.</p>
-        <div class="hero-buttons">
-            <a href="#dashboard" class="btn btn-primary">Go to Dashboard</a>
-            <a href="#erd" class="btn btn-secondary">View ERD</a>
+<header class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+        <h1 class="text-2xl font-bold tracking-tight text-brand-orange">System Overview</h1>
+        <p class="text-sm text-gray-400">Manage real-time bookings and room statuses seamlessly.</p>
+    </div>
+    
+    <div class="flex items-center gap-3">
+        <div class="relative hidden sm:block w-64">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                <svg class="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.604 10.604z" />
+                </svg>
+            </span>
+            <input type="text" id="searchInput" class="w-full rounded-md bg-navy-900 border border-navy-700 py-2 pl-9 pr-4 text-sm text-white outline-none transition focus:border-brand-orange focus:ring-1 focus:ring-brand-orange placeholder-gray-500" placeholder="Search guests or rooms...">
         </div>
-    </div>
-</div>
+        
+        <button id="openCustomerModalBtn" class="whitespace-nowrap rounded-md border border-brand-orange bg-navy-800 px-4 py-2 text-sm font-bold text-brand-orange hover:bg-navy-700 transition shadow-sm">
+            + Register Customer
+        </button>
 
-<div class="stats">
-    <div class="stat-box">
-        <h2>12+</h2>
-        <p>Database Tables</p>
+        <button id="openModalBtn" class="whitespace-nowrap rounded-md bg-brand-orange px-4 py-2 text-sm font-bold text-navy-900 hover:bg-yellow-500 transition shadow-sm">
+            + New Booking
+        </button>
     </div>
-    <div class="stat-box">
-        <h2>4</h2>
-        <p>Advanced Features</p>
-    </div>
-    <div class="stat-box">
-        <h2>100%</h2>
-        <p>Database Normalized</p>
-    </div>
-    <div class="stat-box">
-        <h2>24/7</h2>
-        <p>Hotel Operations</p>
-    </div>
-</div>
+</header>
 
-<section id="about">
-    <div class="section-title">
-        <h2>About the System</h2>
-        <p>Modern Hotel Database Management Solution</p>
+<?php echo $notification; ?>
+
+<section class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-lg border border-navy-700 bg-navy-900 p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Total Bookings</p>
+        <h3 id="statTotalBookings" class="mt-2 text-3xl font-bold text-brand-orange">0</h3>
     </div>
-    <div class="grid">
-        <div class="card">
-            <h3>Customer Management</h3>
-            <p>Store customer information including email, phone number, nationality, address, and booking history.</p>
-        </div>
-        <div class="card">
-            <h3>Booking Management</h3>
-            <p>Handle reservations, room availability, check-in/check-out operations, and booking status.</p>
-        </div>
-        <div class="card">
-            <h3>Payment System</h3>
-            <p>Track payments, methods, invoices, and transaction status securely.</p>
-        </div>
-        <div class="card">
-            <h3>Room Management</h3>
-            <p>Manage room categories, pricing, capacity, availability, and amenities.</p>
-        </div>
+    <div class="rounded-lg border border-navy-700 bg-navy-900 p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Active Stays</p>
+        <h3 id="statActiveStays" class="mt-2 text-3xl font-bold text-brand-orange">0</h3>
+    </div>
+    <div class="rounded-lg border border-navy-700 bg-navy-900 p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Total Revenue</p>
+        <h3 id="statTotalRevenue" class="mt-2 text-3xl font-bold text-brand-orange">Rs 0</h3>
+    </div>
+    <div class="rounded-lg border border-navy-700 bg-navy-900 p-5 shadow-sm">
+        <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">Completed Stays</p>
+        <h3 id="statCompleted" class="mt-2 text-3xl font-bold text-brand-orange">0</h3>
     </div>
 </section>
 
-<section id="features">
-    <div class="section-title">
-        <h2>Advanced Features</h2>
-        <p>Features implemented from your ERD Diagram</p>
-    </div>
-    <div class="grid">
-        <div class="card">
-            <h3>Surge Pricing</h3>
-            <p>Pricing rules dynamically change room prices based on occupancy rate and hotel demand.</p>
-        </div>
-        <div class="card">
-            <h3>Loyalty Accounts</h3>
-            <p>Guests collect points and receive discounts based on booking history.</p>
-        </div>
-        <div class="card">
-            <h3>Maintenance Tickets</h3>
-            <p>Complaints generate tickets assigned to maintenance staff for resolution.</p>
-        </div>
-        <div class="card">
-            <h3>Room Suggestion Engine</h3>
-            <p>Suggest rooms according to capacity, price range, and customer requirements.</p>
-        </div>
-        <div class="card">
-            <h3>Demand Logging</h3>
-            <p>Track room demand and occupancy rates to improve business decisions.</p>
-        </div>
-        <div class="card">
-            <h3>Staff Management</h3>
-            <p>Store staff details including salary, role, shift timing, and hiring dates.</p>
-        </div>
-    </div>
-</section>
-
-<section id="dashboard" style="background-color: #111827;">
-    <div class="section-title">
-        <h2>Live Database Dashboard</h2>
-        <p>Direct connection to SQL Server (OasisHMS Database)</p>
-    </div>
-
-    <?php echo $message; ?>
-
-    <div class="grid">
-        <div class="card" style="grid-column: 1 / -1;">
-            <h3>Register New Customer</h3>
-            <form method="POST" action="index.php#dashboard">
-                <div class="form-group">
-                    <input type="text" name="name" class="form-control" placeholder="Full Name" required>
-                    <input type="email" name="email" class="form-control" placeholder="Email Address">
-                    <input type="text" name="phone" class="form-control" placeholder="Phone Number" required>
-                </div>
-                <div class="form-group">
-                    <input type="text" name="address" class="form-control" placeholder="Home Address">
-                    <input type="text" name="cnic" class="form-control" placeholder="CNIC Number" required>
-                    <input type="text" name="nationality" class="form-control" placeholder="Nationality" value="Pakistani">
-                </div>
-                <button type="submit" name="add_customer" class="btn btn-primary" style="width: 100%;">Save to Database</button>
-            </form>
+<section class="rounded-lg border border-navy-700 bg-navy-900 shadow-sm overflow-hidden">
+    <div class="border-b border-navy-700 px-6 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <h2 class="font-bold text-brand-orange">Recent Transactions</h2>
+        <div id="filterTabs" class="inline-flex rounded-lg bg-navy-800 p-1 border border-navy-700">
+            <button data-filter="All" class="rounded bg-navy-700 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition">All Time</button>
+            <button data-filter="Confirmed" class="rounded px-3 py-1.5 text-xs font-semibold text-gray-400 hover:text-white transition">Confirmed</button>
+            <button data-filter="Active" class="rounded px-3 py-1.5 text-xs font-semibold text-gray-400 hover:text-white transition">Active</button>
+            <button data-filter="Completed" class="rounded px-3 py-1.5 text-xs font-semibold text-gray-400 hover:text-white transition">Completed</button>
         </div>
     </div>
 
-    <div class="table-container" style="margin-top: 40px;">
-        <h3 style="color:#f59e0b; margin-bottom:15px; font-size:24px;">Customer Directory</h3>
-        <table>
-            <thead>
+    <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+            <thead class="bg-brand-orange text-navy-900 text-sm font-bold tracking-wide">
                 <tr>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>CNIC</th>
+                    <th class="px-6 py-3">Guest Details</th>
+                    <th class="px-6 py-3">Room Information</th>
+                    <th class="px-6 py-3">Stay Timeline</th>
+                    <th class="px-6 py-3">Amount Charged</th>
+                    <th class="px-6 py-3">Status</th>
                 </tr>
             </thead>
-            <tbody>
-                <?php
-                if(isset($conn) && $conn) {
-                    $sql = "SELECT * FROM CUSTOMER ORDER BY CustomerID DESC";
-                    $stmt = sqlsrv_query($conn, $sql);
-
-                    if ($stmt !== false) {
-                        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-                            echo "<tr>";
-                            echo "<td>" . htmlspecialchars($row['CustomerID']) . "</td>";
-                            echo "<td>" . htmlspecialchars($row['Name']) . "</td>";
-                            echo "<td>" . htmlspecialchars($row['Email']) . "</td>";
-                            echo "<td>" . htmlspecialchars($row['Phone']) . "</td>";
-                            echo "<td>" . htmlspecialchars($row['CNIC']) . "</td>";
-                            echo "</tr>";
-                        }
-                    } else {
-                        echo "<tr><td colspan='5'>No data found or query failed.</td></tr>";
-                    }
-                }
-                ?>
+            <tbody id="bookingsTableBody" class="divide-y divide-navy-700 text-sm bg-navy-800">
             </tbody>
         </table>
     </div>
 </section>
 
-<section id="tables">
-    <div class="section-title">
-        <h2>Database Tables</h2>
-        <p>Main entities from your ERD diagram</p>
+<div id="bookingModal" class="relative z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"></div>
+    <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+        <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+            <div class="relative w-full max-w-lg transform overflow-hidden rounded-lg bg-navy-800 border border-navy-700 text-left shadow-2xl transition-all sm:my-8">
+                <div class="border-b border-navy-700 bg-navy-900 px-6 py-4 flex items-center justify-between">
+                    <h3 class="text-base font-bold text-brand-orange">Add New Booking Reservation</h3>
+                    <button id="closeModalCross" class="text-gray-400 hover:text-white transition">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <form action="bookings.php" method="GET" class="px-6 py-4 space-y-4">
+                    <div class="text-sm text-gray-400 mb-4 bg-navy-900 p-3 rounded border border-navy-700">
+                        <span class="font-bold text-brand-orange">Note:</span> Please process reservations through the main Bookings engine.
+                    </div>
+                    <div class="border-t border-navy-700 pt-4 flex items-center justify-end gap-3">
+                        <button type="button" id="closeModalBtn" class="rounded px-4 py-2 text-sm font-semibold text-gray-400 hover:text-white transition">Cancel</button>
+                        <button type="submit" class="rounded bg-brand-blue px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-500 transition">Go to Bookings Hub</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
-    <div class="table-container">
-        <table>
-            <tr>
-                <th>Table Name</th>
-                <th>Purpose</th>
-            </tr>
-            <tr><td>CUSTOMER</td><td>Stores customer information</td></tr>
-            <tr><td>ROOM</td><td>Stores room details and availability</td></tr>
-            <tr><td>ROOM_TYPE</td><td>Stores room category and pricing</td></tr>
-            <tr><td>BOOKING</td><td>Stores reservation records</td></tr>
-            <tr><td>PAYMENT</td><td>Stores payment transactions</td></tr>
-            <tr><td>STAFF</td><td>Stores hotel employee data</td></tr>
-            <tr><td>LOYALTY_ACCOUNT</td><td>Stores customer loyalty points</td></tr>
-            <tr><td>DISCOUNT_RECORD</td><td>Stores discount information</td></tr>
-            <tr><td>PRICING_RULE</td><td>Stores surge pricing rules</td></tr>
-            <tr><td>DEMAND_LOG</td><td>Stores occupancy demand data</td></tr>
-            <tr><td>COMPLAINT</td><td>Stores customer complaints</td></tr>
-            <tr><td>MAINTENANCE_TICKET</td><td>Stores maintenance issue records</td></tr>
-            <tr><td>ROOM_SUGGESTION_LOG</td><td>Stores suggested room records</td></tr>
-        </table>
-    </div>
-</section>
+</div>
 
-<section id="timeline">
-    <div class="section-title">
-        <h2>Project Timeline</h2>
-        <p>Database development phases</p>
-    </div>
-    <div class="timeline">
-        <div class="timeline-item">
-            <h3>Week 1 - Requirement Analysis</h3>
-            <p>Gather hotel management requirements and identify entities.</p>
-        </div>
-        <div class="timeline-item">
-            <h3>Week 2 - ER Diagram Design</h3>
-            <p>Create relationships and normalize database structure.</p>
-        </div>
-        <div class="timeline-item">
-            <h3>Week 3 - Table Creation</h3>
-            <p>Create database tables and define constraints.</p>
-        </div>
-        <div class="timeline-item">
-            <h3>Week 4 - SQL Development</h3>
-            <p>Develop SQL queries, procedures, and triggers.</p>
-        </div>
-        <div class="timeline-item">
-            <h3>Week 5 - Testing</h3>
-            <p>Validate bookings, payments, and maintenance workflow.</p>
-        </div>
-        <div class="timeline-item">
-            <h3>Week 6 - Final Documentation</h3>
-            <p>Prepare reports and final project presentation.</p>
+<div id="customerModal" class="relative z-50 hidden" aria-modal="true">
+    <div class="fixed inset-0 bg-black/60 backdrop-blur-sm"></div>
+    <div class="fixed inset-0 z-10 w-screen overflow-y-auto flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-navy-800 border border-navy-700 rounded-lg p-6 shadow-2xl">
+            <h3 class="text-brand-orange font-bold text-xl mb-4">Register New Customer</h3>
+            <form method="POST" action="index.php" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 mb-1">Full Name</label>
+                    <input type="text" name="cName" class="w-full bg-navy-900 border border-navy-700 p-2 text-sm rounded text-white outline-none focus:border-brand-orange" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 mb-1">Phone Number</label>
+                    <input type="text" name="cPhone" class="w-full bg-navy-900 border border-navy-700 p-2 text-sm rounded text-white outline-none focus:border-brand-orange" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 mb-1">Email Address</label>
+                    <input type="email" name="cEmail" class="w-full bg-navy-900 border border-navy-700 p-2 text-sm rounded text-white outline-none focus:border-brand-orange">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-400 mb-1">CNIC Number</label>
+                    <input type="text" name="cCNIC" class="w-full bg-navy-900 border border-navy-700 p-2 text-sm rounded text-white outline-none focus:border-brand-orange" required>
+                </div>
+                <div class="flex gap-3 pt-4 border-t border-navy-700">
+                    <button type="button" id="closeCustomerModal" class="flex-1 bg-navy-700 p-2 rounded text-white font-bold hover:bg-navy-600 transition">Cancel</button>
+                    <button type="submit" name="add_customer" class="flex-1 bg-brand-orange p-2 rounded text-navy-900 font-bold hover:bg-yellow-500 transition">Register</button>
+                </div>
+            </form>
         </div>
     </div>
-</section>
+</div>
 
-<section id="erd">
-    <div class="section-title">
-        <h2>ERD Diagram</h2>
-        <p>Entity Relationship Diagram of the Hotel System</p>
-    </div>
-    <div class="erd-box">
-        <img src="erd.png" alt="ERD Diagram">
-    </div>
-</section>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        let bookingsData = <?php echo json_encode($bookingsArray); ?>;
+        let activeFilter = 'All';
+        let searchQuery = '';
+        
+        // Modal Selectors
+        const openModalBtn = document.getElementById('openModalBtn');
+        const bookingModal = document.getElementById('bookingModal');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const closeModalCross = document.getElementById('closeModalCross');
+        
+        // Customer Modal Selectors
+        const customerModal = document.getElementById('customerModal');
+        const openCustomerModalBtn = document.getElementById('openCustomerModalBtn');
+        const closeCustomerModal = document.getElementById('closeCustomerModal');
+
+        // Table & Dashboard Selectors
+        const bookingsTableBody = document.getElementById('bookingsTableBody');
+        const searchInput = document.getElementById('searchInput');
+        const filterTabs = document.getElementById('filterTabs').querySelectorAll('button');
+        const statTotalBookings = document.getElementById('statTotalBookings');
+        const statActiveStays = document.getElementById('statActiveStays');
+        const statTotalRevenue = document.getElementById('statTotalRevenue');
+        const statCompleted = document.getElementById('statCompleted');
+
+        // Modal Event Listeners
+        if (openModalBtn) openModalBtn.addEventListener('click', () => bookingModal.classList.remove('hidden'));
+        if (closeModalBtn) closeModalBtn.addEventListener('click', () => bookingModal.classList.add('hidden'));
+        if (closeModalCross) closeModalCross.addEventListener('click', () => bookingModal.classList.add('hidden'));
+        
+        // Customer Modal Event Listeners
+        if (openCustomerModalBtn) openCustomerModalBtn.addEventListener('click', () => customerModal.classList.remove('hidden'));
+        if (closeCustomerModal) closeCustomerModal.addEventListener('click', () => customerModal.classList.add('hidden'));
+
+        // Rendering Logic
+        const renderDashboard = () => {
+            const filteredData = bookingsData.filter(item => {
+                const matchesFilter = (activeFilter === 'All' || item.status === activeFilter);
+                const matchesSearch = item.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                      item.email.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                      item.room_details.toLowerCase().includes(searchQuery.toLowerCase());
+                return matchesFilter && matchesSearch;
+            });
+            statTotalBookings.innerText = bookingsData.length;
+            statActiveStays.innerText = bookingsData.filter(b => b.status === 'Active').length;
+            statCompleted.innerText = bookingsData.filter(b => b.status === 'Completed').length;
+            let totalRevenue = bookingsData.reduce((sum, b) => sum + parseFloat(b.amount), 0);
+            statTotalRevenue.innerText = 'Rs ' + totalRevenue.toLocaleString();
+            bookingsTableBody.innerHTML = '';
+            
+            if (filteredData.length === 0) {
+                bookingsTableBody.innerHTML = `<tr><td colspan="5" class="px-6 py-10 text-center text-sm text-gray-500 font-medium">No reservations match specified queries.</td></tr>`;
+                return;
+            }
+            
+            filteredData.forEach(booking => {
+                let badgeStyles = 'bg-gray-800 text-gray-300';
+                if (booking.status === 'Confirmed') badgeStyles = 'bg-amber-900/50 text-amber-400 border border-amber-800/50';
+                if (booking.status === 'Active') badgeStyles = 'bg-blue-900/50 text-blue-400 border border-blue-800/50';
+                if (booking.status === 'Completed') badgeStyles = 'bg-emerald-900/50 text-emerald-400 border border-emerald-800/50';
+                const row = `
+                    <tr class="hover:bg-navy-700/50 transition">
+                        <td class="whitespace-nowrap px-6 py-4">
+                            <div class="font-bold text-white">${booking.customer_name}</div>
+                            <div class="text-xs text-gray-400">${booking.email}</div>
+                        </td>
+                        <td class="whitespace-nowrap px-6 py-4 text-gray-300">${booking.room_details}</td>
+                        <td class="whitespace-nowrap px-6 py-4 text-gray-300">${booking.check_in} to ${booking.check_out}</td>
+                        <td class="whitespace-nowrap px-6 py-4 font-bold text-brand-orange">Rs ${parseFloat(booking.amount).toLocaleString()}</td>
+                        <td class="whitespace-nowrap px-6 py-4">
+                            <span class="inline-flex items-center rounded px-2.5 py-1 text-xs font-semibold ${badgeStyles}">${booking.status}</span>
+                        </td>
+                    </tr>`;
+                bookingsTableBody.insertAdjacentHTML('beforeend', row);
+            });
+        };
+        
+        if (searchInput) searchInput.addEventListener('input', (e) => { searchQuery = e.target.value; renderDashboard(); });
+        
+        filterTabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                filterTabs.forEach(t => t.className = 'rounded px-3 py-1.5 text-xs font-semibold text-gray-400 hover:text-white transition');
+                e.target.className = 'rounded bg-navy-700 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition';
+                activeFilter = e.target.getAttribute('data-filter');
+                renderDashboard();
+            });
+        });
+        renderDashboard();
+    });
+</script>
 
 <?php include 'footer.php'; ?>

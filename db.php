@@ -1,20 +1,16 @@
 <?php
-// Notice the double backslash below! PHP requires \\ to read a single \
-$serverName = "DESKTOP-L3L25KV\\SQLEXPRESS"; 
+// Default MySQL credentials for local development (like XAMPP)
+$servername = "localhost"; 
+$username = "root"; // Default MySQL username
+$password = "CALLOFDUTY"; // Default MySQL password is usually empty, change if you set one in Workbench
+$dbname = "hotel"; // The name of your database in Workbench
 
-$connectionOptions = array(
-    "Database" => "OasisHMS",
-    "Uid" => "oasisuser",
-    "PWD" => "12345",
-    "TrustServerCertificate" => true // Added this based on your screenshot!
-);
+// Establish the MySQL connection
+$conn = mysqli_connect($servername, $username, $password, $dbname);
 
-// Establishes the connection
-$conn = sqlsrv_connect($serverName, $connectionOptions);
-
-if($conn) {
-   // echo "<h1>✅ Connected Successfully!</h1>";
-} else {
-    echo "<h1>❌ Connection Failed</h1>";
-    die(print_r(sqlsrv_errors(), true));
+// Check if the connection was successful
+if (!$conn) {
+    die("❌ MySQL Connection Failed: " . mysqli_connect_error());
 }
+// echo "✅ Connected to MySQL Successfully!";
+?>

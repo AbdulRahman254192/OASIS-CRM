@@ -1,237 +1,191 @@
 <?php
 include 'db.php';
-include 'header.php';
 $message = "";
 
 // --- LOGIC: ADD NEW STAFF ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_staff'])) {
-    $name = $_POST['name'];
-    $role = $_POST['role'];
-    $phone = $_POST['phone'];
-    $salary = $_POST['salary'];
-    $shiftTiming = $_POST['shiftTiming'];
-    $hireDate = date('Y-m-d'); 
-
-    $sql = "INSERT INTO STAFF (Name, Role, Phone, Salary, ShiftTiming, HireDate) VALUES (?, ?, ?, ?, ?, ?)";
-    $stmt = sqlsrv_query($conn, $sql, array($name, $role, $phone, $salary, $shiftTiming, $hireDate));
-
-    if ($stmt === false) {
-        $message = "<div style='color:#ef4444; background:#1e293b; border:1px solid #ef4444; padding:15px; border-radius:6px; text-align:center; margin-bottom:20px; font-weight:bold;'>❌ Error hiring staff. Check database constraints!</div>";
-    } else {
+    $stmt = mysqli_prepare($conn, "INSERT INTO STAFF (Name, Role, Phone, Salary, ShiftTiming, HireDate) VALUES (?, ?, ?, ?, ?, ?)");
+    mysqli_stmt_bind_param($stmt, "sssiss", $_POST['name'], $_POST['role'], $_POST['phone'], $_POST['salary'], $_POST['shiftTiming'], date('Y-m-d'));
+    
+    if (mysqli_stmt_execute($stmt)) {
         header("Location: staff.php?status=staff_added");
         exit();
+    } else {
+        $message = "<div class='mb-6 rounded-lg border border-red-500 bg-red-500/10 p-4 text-center font-bold text-red-500'>❌ Error hiring staff: " . mysqli_error($conn) . "</div>";
     }
+    mysqli_stmt_close($stmt);
 }
 
 // --- LOGIC: CREATE MAINTENANCE TICKET ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_ticket'])) {
-    $complaintId = $_POST['complaintId'];
-    $assignedStaff = $_POST['assignedStaff'];
-    $managerId = $_POST['managerId'];
-    
-    // Status defaults to Pending, Resolution and ClosedDate are NULL until resolved
     $sql = "INSERT INTO MAINTENANCE_TICKET (ComplaintID, AssignedStaffID, VerifiedByManager, Status) VALUES (?, ?, ?, 'Pending')";
-    $stmt = sqlsrv_query($conn, $sql, array($complaintId, $assignedStaff, $managerId));
-
-    if ($stmt === false) {
-        $message = "<div style='color:#ef4444; background:#1e293b; border:1px solid #ef4444; padding:15px; border-radius:6px; text-align:center; margin-bottom:20px; font-weight:bold;'>❌ Error creating ticket! Ensure the Complaint ID exists.</div>";
-    } else {
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "iii", $_POST['complaintId'], $_POST['assignedStaff'], $_POST['managerId']);
+    
+    if (mysqli_stmt_execute($stmt)) {
         header("Location: staff.php?status=ticket_added");
         exit();
+    } else {
+        $message = "<div class='mb-6 rounded-lg border border-red-500 bg-red-500/10 p-4 text-center font-bold text-red-500'>❌ Error creating ticket.</div>";
     }
+    mysqli_stmt_close($stmt);
 }
 
 // --- LOGIC: RESOLVE TICKET ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['resolve_ticket'])) {
-    $ticketId = $_POST['ticketId'];
-    $resolution = $_POST['resolution'];
-    $closedDate = date('Y-m-d');
-
-    $sql = "UPDATE MAINTENANCE_TICKET SET Status = 'Resolved', Resolution = ?, ClosedDate = ? WHERE TicketID = ?";
-    $stmt = sqlsrv_query($conn, $sql, array($resolution, $closedDate, $ticketId));
+    // 1. Update Ticket
+    $stmt1 = mysqli_prepare($conn, "UPDATE MAINTENANCE_TICKET SET Status = 'Resolved', Resolution = ?, ClosedDate = ? WHERE TicketID = ?");
+    $stmt1_date = date('Y-m-d');
+    mysqli_stmt_bind_param($stmt1, "ssi", $_POST['resolution'], $stmt1_date, $_POST['ticketId']);
+    mysqli_stmt_execute($stmt1);
+    
+    // 2. Update Complaint
+    $stmt2 = mysqli_prepare($conn, "UPDATE COMPLAINT SET Status = 'Resolved' WHERE ComplaintID = ?");
+    mysqli_stmt_bind_param($stmt2, "i", $_POST['complaintId']);
+    mysqli_stmt_execute($stmt2);
     
     header("Location: staff.php?status=resolved");
     exit();
 }
+
+// NOW we load the header so the HTML doesn't block the redirects above
+include 'header.php';
 ?>
 
-<div class="container">
-    <div class="section-title" style="margin-top: 20px;">
-        <h2>Staff & Maintenance Hub</h2>
-        <p>Manage hotel employees and track maintenance tickets</p>
-    </div>
+<header class="mb-8">
+    <h1 class="text-2xl font-bold tracking-tight text-brand-orange">Staff & Maintenance Hub</h1>
+    <p class="text-sm text-gray-400">Manage hotel employees and track maintenance tickets</p>
+</header>
 
-    <?php 
-    if (isset($_GET['status'])) {
-        if ($_GET['status'] == 'staff_added') echo "<div style='color:#10b981; background:#1e293b; border:1px solid #10b981; padding:15px; border-radius:6px; text-align:center; margin-bottom:20px; font-weight:bold;'>✅ Staff member hired successfully!</div>";
-        if ($_GET['status'] == 'ticket_added') echo "<div style='color:#10b981; background:#1e293b; border:1px solid #10b981; padding:15px; border-radius:6px; text-align:center; margin-bottom:20px; font-weight:bold;'>✅ Maintenance ticket assigned!</div>";
-        if ($_GET['status'] == 'resolved') echo "<div style='color:#10b981; background:#1e293b; border:1px solid #10b981; padding:15px; border-radius:6px; text-align:center; margin-bottom:20px; font-weight:bold;'>✅ Ticket resolved successfully!</div>";
-    }
-    echo $message; 
-    ?>
+<?php 
+if (isset($_GET['status'])) {
+    if ($_GET['status'] == 'staff_added') echo "<div class='mb-6 rounded-lg border border-emerald-500 bg-emerald-500/10 p-4 text-center font-bold text-emerald-500'>✅ Staff member hired successfully!</div>";
+    if ($_GET['status'] == 'ticket_added') echo "<div class='mb-6 rounded-lg border border-emerald-500 bg-emerald-500/10 p-4 text-center font-bold text-emerald-500'>✅ Maintenance ticket assigned!</div>";
+    if ($_GET['status'] == 'resolved') echo "<div class='mb-6 rounded-lg border border-emerald-500 bg-emerald-500/10 p-4 text-center font-bold text-emerald-500'>✅ Ticket resolved successfully!</div>";
+}
+echo $message; 
+?>
 
-    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
-        
-        <div class="card" style="flex: 1; min-width: 300px;">
-            <h3>Hire New Staff</h3>
-            <form method="POST" action="staff.php">
-                <div class="form-group"><input type="text" name="name" class="form-control" placeholder="Full Name" required></div>
-                
-                <div class="form-group">
-                    <select name="role" class="form-control" required>
-                        <option value="" disabled selected>-- Select Role --</option>
-                        <option value="Manager">Manager</option>
-                        <option value="Receptionist">Receptionist</option>
-                        <option value="Housekeeping">Housekeeping</option>
-                        <option value="Plumber">Plumber</option>
-                        <option value="Electrician">Electrician</option>
-                    </select>
-                </div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+    <section class="rounded-lg border border-navy-700 bg-navy-900 p-6 shadow-sm">
+        <h3 class="mb-4 font-bold text-brand-orange border-b border-navy-700 pb-2">Hire New Staff</h3>
+        <form method="POST" class="space-y-4">
+            <input type="text" name="name" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white" placeholder="Full Name" required>
+            <select name="role" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white">
+                <option value="Manager">Manager</option>
+                <option value="Receptionist">Receptionist</option>
+                <option value="Housekeeping">Housekeeping</option>
+                <option value="Plumber">Plumber</option>
+                <option value="Electrician">Electrician</option>
+            </select>
+            <input type="text" name="phone" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white" placeholder="Phone Number" required>
+            <input type="number" name="salary" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white" placeholder="Salary" required>
+            <select name="shiftTiming" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white">
+                <option value="08:00 AM - 04:00 PM">Morning Shift</option>
+                <option value="04:00 PM - 12:00 AM">Evening Shift</option>
+                <option value="12:00 AM - 08:00 AM">Night Shift</option>
+            </select>
+            <button type="submit" name="add_staff" class="w-full bg-brand-orange text-navy-900 font-bold py-2 rounded">Hire Employee</button>
+        </form>
+    </section>
 
-                <div class="form-group"><input type="text" name="phone" class="form-control" placeholder="Phone Number" required></div>
-                <div class="form-group"><input type="number" name="salary" class="form-control" placeholder="Salary (PKR/USD)" step="0.01" required></div>
-                
-                <div class="form-group">
-                    <select name="shiftTiming" class="form-control" required>
-                        <option value="" disabled selected>-- Select Shift Timing --</option>
-                        <option value="08:00 AM - 04:00 PM">08:00 AM - 04:00 PM (Morning)</option>
-                        <option value="04:00 PM - 12:00 AM">04:00 PM - 12:00 AM (Evening)</option>
-                        <option value="12:00 AM - 08:00 AM">12:00 AM - 08:00 AM (Night)</option>
-                    </select>
-                </div>
-                
-                <button type="submit" name="add_staff" class="btn-primary" style="width: 100%;">Hire Employee</button>
-            </form>
-        </div>
-
-        <div class="card" style="flex: 1; min-width: 300px;">
-            <h3>Assign Ticket</h3>
-            <form method="POST" action="staff.php">
-                <div class="form-group">
-                    <select name="complaintId" class="form-control" required>
-                        <option value="" disabled selected>-- Select Active Complaint --</option>
-                        <?php
-                        // Upgraded dropdown linking COMPLAINT and ROOM
-                        if(isset($conn)) {
-                            $cSql = "SELECT c.ComplaintID, c.Description, r.RoomNumber 
-                                     FROM COMPLAINT c 
-                                     JOIN ROOM r ON c.RoomID = r.RoomID
-                                     WHERE c.Status = 'Pending' OR c.Status IS NULL"; 
-                                     
-                            $cStmt = sqlsrv_query($conn, $cSql);
-                            
-                            if ($cStmt !== false) {
-                                while ($cRow = sqlsrv_fetch_array($cStmt, SQLSRV_FETCH_ASSOC)) {
-                                    $shortDesc = htmlspecialchars(substr($cRow['Description'], 0, 30)) . "...";
-                                    echo "<option value='".$cRow['ComplaintID']."'>#" . $cRow['ComplaintID'] . " - Room " . $cRow['RoomNumber'] . " (" . $shortDesc . ")</option>";
-                                }
-                            }
-                        }
-                        ?>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <select name="assignedStaff" class="form-control" required>
-                        <option value="" disabled selected>-- Assign To (Maintenance Staff) --</option>
-                        <?php
-                        if(isset($conn)) {
-                            $sSql = "SELECT StaffID, Name, Role FROM STAFF WHERE Role NOT IN ('Manager', 'Receptionist')";
-                            $sStmt = sqlsrv_query($conn, $sSql);
-                            if ($sStmt !== false) {
-                                while ($sRow = sqlsrv_fetch_array($sStmt, SQLSRV_FETCH_ASSOC)) {
-                                    echo "<option value='".$sRow['StaffID']."'>".$sRow['Name']." (".$sRow['Role'].")</option>";
-                                }
-                            }
-                        }
-                        ?>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <select name="managerId" class="form-control" required>
-                        <option value="" disabled selected>-- Verified By (Manager) --</option>
-                        <?php
-                        if(isset($conn)) {
-                            $mSql = "SELECT StaffID, Name FROM STAFF WHERE Role = 'Manager'";
-                            $mStmt = sqlsrv_query($conn, $mSql);
-                            if ($mStmt !== false) {
-                                while ($mRow = sqlsrv_fetch_array($mStmt, SQLSRV_FETCH_ASSOC)) {
-                                    echo "<option value='".$mRow['StaffID']."'>Manager: ".$mRow['Name']."</option>";
-                                }
-                            }
-                        }
-                        ?>
-                    </select>
-                </div>
-                
-                <button type="submit" name="add_ticket" class="btn-secondary" style="width: 100%;">Create Ticket</button>
-            </form>
-        </div>
-    </div>
-
-    <div class="card" id="ticketTable">
-        <h3>Active Maintenance Tickets</h3>
-        <table style="width:100%; text-align:left;">
-            <thead>
-                <tr>
-                    <th>Ticket ID</th>
-                    <th>Complaint ID</th>
-                    <th>Assigned To</th>
-                    <th>Verified By</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
+    <section class="rounded-lg border border-navy-700 bg-navy-900 p-6 shadow-sm">
+        <h3 class="mb-4 font-bold text-brand-orange border-b border-navy-700 pb-2">Assign Ticket</h3>
+        <form method="POST" class="space-y-4">
+            <select name="complaintId" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white" required>
+                <option value="" disabled selected>-- Select Pending Complaint --</option>
                 <?php
-                if(isset($conn)) {
-                    $tSql = "SELECT t.TicketID, t.ComplaintID, t.Status, t.Resolution,
-                                    w.Name AS WorkerName, 
-                                    m.Name AS ManagerName
-                             FROM MAINTENANCE_TICKET t
-                             JOIN STAFF w ON t.AssignedStaffID = w.StaffID
-                             JOIN STAFF m ON t.VerifiedByManager = m.StaffID
-                             ORDER BY t.TicketID DESC";
-                             
-                    $tStmt = sqlsrv_query($conn, $tSql);
-
-                    if ($tStmt !== false) {
-                        while ($row = sqlsrv_fetch_array($tStmt, SQLSRV_FETCH_ASSOC)) {
-                            echo "<tr>";
-                            echo "<td>#" . htmlspecialchars($row['TicketID']) . "</td>";
-                            echo "<td>#" . htmlspecialchars($row['ComplaintID']) . "</td>";
-                            echo "<td>" . htmlspecialchars($row['WorkerName']) . "</td>";
-                            echo "<td>" . htmlspecialchars($row['ManagerName']) . "</td>";
-                            
-                            if ($row['Status'] == 'Resolved') {
-                                echo "<td style='color:#10b981; font-weight:bold;'>Resolved</td>";
-                                echo "<td><span style='color:#94a3b8; font-size: 12px;'>Note: " . htmlspecialchars($row['Resolution']) . "</span></td>";
-                            } else {
-                                echo "<td style='color:#f59e0b; font-weight:bold;'>Pending</td>";
-                                echo "<td>
-                                        <form method='POST' action='staff.php' style='display:flex; gap:10px;'>
-                                            <input type='hidden' name='ticketId' value='".$row['TicketID']."'>
-                                            <input type='text' name='resolution' placeholder='Enter fix details...' required style='padding:5px; border-radius:4px; border:none; background:#0b1120; color:white;'>
-                                            <button type='submit' name='resolve_ticket' style='background:#10b981; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;'>Resolve</button>
-                                        </form>
-                                      </td>";
-                            }
-                            echo "</tr>";
-                        }
-                    }
+                $res = mysqli_query($conn, "SELECT c.ComplaintID, c.Description, r.RoomNumber FROM COMPLAINT c JOIN ROOM r ON c.RoomID = r.RoomID WHERE c.Status = 'Pending'");
+                while ($c = mysqli_fetch_assoc($res)) {
+                    // Truncate the description to 35 characters so the dropdown stays clean
+                    $desc = strlen($c['Description']) > 35 ? substr($c['Description'], 0, 35) . "..." : $c['Description'];
+                    
+                    // Display both Room Number and the truncated Description snippet
+                    echo "<option value='{$c['ComplaintID']}'>#{$c['ComplaintID']} - Room {$c['RoomNumber']} ({$desc})</option>";
                 }
                 ?>
-            </tbody>
-        </table>
-    </div>
+            </select>
+            <select name="assignedStaff" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white" required>
+                <option value="" disabled selected>-- Assign Worker --</option>
+                <?php
+                $res = mysqli_query($conn, "SELECT StaffID, Name, Role FROM STAFF WHERE Role NOT IN ('Manager', 'Receptionist')");
+                while ($s = mysqli_fetch_assoc($res)) echo "<option value='{$s['StaffID']}'>{$s['Name']} ({$s['Role']})</option>";
+                ?>
+            </select>
+            <select name="managerId" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white" required>
+                <option value="" disabled selected>-- Approved By --</option>
+                <?php
+                $res = mysqli_query($conn, "SELECT StaffID, Name FROM STAFF WHERE Role = 'Manager'");
+                while ($m = mysqli_fetch_assoc($res)) echo "<option value='{$m['StaffID']}'>Mgr: {$m['Name']}</option>";
+                ?>
+            </select>
+            <button type="submit" name="add_ticket" class="w-full bg-brand-blue text-white font-bold py-2 rounded">Create Ticket</button>
+        </form>
+    </section>
 </div>
 
+<section id="ticketTable" class="mb-8 rounded-lg border border-navy-700 bg-navy-900 overflow-hidden shadow-sm">
+    <div class="bg-navy-800 p-4 border-b border-navy-700 font-bold text-brand-orange">Active Maintenance Tickets</div>
+    <table class="w-full text-left text-sm text-gray-300">
+        <thead class="bg-navy-900 text-xs uppercase">
+            <tr><th class="p-3">Ticket ID</th><th class="p-3">Worker</th><th class="p-3">Status</th><th class="p-3">Action</th></tr>
+        </thead>
+        <tbody class="divide-y divide-navy-700">
+            <?php
+            $sql = "SELECT t.TicketID, t.ComplaintID, t.Status, w.Name AS WorkerName FROM MAINTENANCE_TICKET t JOIN STAFF w ON t.AssignedStaffID = w.StaffID ORDER BY t.TicketID DESC";
+            $res = mysqli_query($conn, $sql);
+            if(mysqli_num_rows($res) > 0) {
+                while ($row = mysqli_fetch_assoc($res)) {
+                    echo "<tr class='hover:bg-navy-800'>";
+                    echo "<td class='p-3'>#{$row['TicketID']}</td><td class='p-3'>{$row['WorkerName']}</td>";
+                    echo "<td class='p-3 ".($row['Status'] == 'Resolved' ? 'text-emerald-500' : 'text-amber-500')."'>{$row['Status']}</td>";
+                    echo "<td class='p-3'>";
+                    if ($row['Status'] != 'Resolved') {
+                        echo "<form method='POST' class='flex gap-2'>
+                                <input type='hidden' name='ticketId' value='{$row['TicketID']}'>
+                                <input type='hidden' name='complaintId' value='{$row['ComplaintID']}'>
+                                <input type='text' name='resolution' placeholder='Fix details...' class='bg-navy-800 border-navy-700 p-1 rounded text-xs text-white' required>
+                                <button type='submit' name='resolve_ticket' class='bg-emerald-600 px-2 py-1 rounded text-xs text-white'>Resolve</button>
+                              </form>";
+                    } else {
+                        echo "<span class='text-gray-500 italic text-xs'>Completed</span>";
+                    }
+                    echo "</td></tr>";
+                }
+            } else {
+                echo "<tr><td colspan='4' class='p-6 text-center text-gray-500'>No active tickets.</td></tr>";
+            }
+            ?>
+        </tbody>
+    </table>
+</section>
+
+<section class="rounded-lg border border-navy-700 bg-navy-900 overflow-hidden shadow-sm">
+    <div class="bg-navy-800 p-4 border-b border-navy-700 font-bold text-brand-orange">Staff Directory</div>
+    <table class="w-full text-left text-sm text-gray-300">
+        <thead class="bg-navy-900 text-xs uppercase">
+            <tr><th class="p-3">Staff ID</th><th class="p-3">Staff Name</th><th class="p-3">Role</th><th class="p-3">Salary</th><th class="p-3">Shift</th></tr>
+        </thead>
+        <tbody class="divide-y divide-navy-700">
+            <?php
+            $res = mysqli_query($conn, "SELECT StaffID, Name, Role, Salary, ShiftTiming FROM STAFF");
+            while ($row = mysqli_fetch_assoc($res)) {
+                echo "<tr class='hover:bg-navy-800'>";
+                echo "<td class='p-3 text-brand-blue font-bold'>#" . htmlspecialchars($row['StaffID']) . "</td>";
+                echo "<td class='p-3 font-bold text-white'>{$row['Name']}</td>";
+                echo "<td class='p-3'>{$row['Role']}</td>";
+                echo "<td class='p-3'>Rs " . number_format($row['Salary']) . "</td>"; 
+                echo "<td class='p-3'>{$row['ShiftTiming']}</td>";
+                echo "</tr>";
+            }
+            ?>
+        </tbody>
+    </table>
+</section>
+
 <script>
-    <?php if (isset($_GET['status']) || !empty($message)): ?>
-        window.onload = function() {
-            setTimeout(function() {
-                document.getElementById('ticketTable').scrollIntoView({ behavior: 'smooth' });
-            }, 300);
-        };
+    <?php if (isset($_GET['status'])): ?>
+        window.onload = () => document.getElementById('ticketTable').scrollIntoView({ behavior: 'smooth' });
     <?php endif; ?>
 </script>
 

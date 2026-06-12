@@ -1,5 +1,21 @@
-<footer style="background:#111827; padding:30px; text-align:center; border-top:1px solid rgba(245,158,11,0.2); margin-top: 50px;">
-    <p style="color:#94a3b8;">OASIS Hotel Management System © 2026 | Database Management System Project</p>
-</footer>
+</main> <!-- Closes Main Content Area -->
+    </div> <!-- Closes Flex Wrapper -->
+
+    <script>
+        // Sidebar Toggle Logic for all pages
+        document.addEventListener('DOMContentLoaded', () => {
+            const menuToggle = document.getElementById('menuToggle');
+            const sidebar = document.getElementById('sidebar');
+            const sidebarOverlay = document.getElementById('sidebarOverlay');
+            
+            const toggleSidebar = () => {
+                sidebar.classList.toggle('-translate-x-full');
+                if(sidebarOverlay) sidebarOverlay.classList.toggle('hidden');
+            };
+            
+            if (menuToggle) menuToggle.addEventListener('click', toggleSidebar);
+            if (sidebarOverlay) sidebarOverlay.addEventListener('click', toggleSidebar);
+        });
+    </script>
 </body>
 </html>

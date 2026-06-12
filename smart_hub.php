@@ -1,164 +1,153 @@
 <?php
 include 'db.php';
-include 'header.php';
 $message = "";
 
-// --- LOGIC: ADD PRICING RULE ---
+// --- LOGIC 1: ADD PRICING RULE ---
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['add_rule'])) {
     $ruleName = $_POST['ruleName'];
     $condition = $_POST['condition'];
     $multiplier = $_POST['multiplier'];
     $managerId = $_POST['managerId'];
     
-    $sql = "INSERT INTO PRICING_RULE (RuleName, TriggerCondition, SurgeMultiplier, ApprovedByManager, Status) 
-            VALUES (?, ?, ?, ?, 'Active')";
-    $stmt = sqlsrv_query($conn, $sql, array($ruleName, $condition, $multiplier, $managerId));
+    // MySQLi Prepared Statement
+    $sql = "INSERT INTO PRICING_RULE (RuleName, TriggerCondition, SurgeMultiplier, ApprovedByManager, Status) VALUES (?, ?, ?, ?, 'Active')";
+    $stmt = mysqli_prepare($conn, $sql);
+    mysqli_stmt_bind_param($stmt, "ssdi", $ruleName, $condition, $multiplier, $managerId);
 
-    if ($stmt === false) {
-        $message = "<div style='color:#ef4444; background:#1e293b; border:1px solid #ef4444; padding:15px; border-radius:6px; text-align:center; margin-bottom:20px; font-weight:bold;'>❌ Error creating pricing rule!</div>";
+    if (!mysqli_stmt_execute($stmt)) {
+        $message = "<div class='mb-6 rounded-lg border border-red-500 bg-red-500/10 p-4 text-center font-bold text-red-500'>❌ Error creating pricing rule!</div>";
     } else {
         header("Location: smart_hub.php?status=rule_added");
         exit();
     }
+    mysqli_stmt_close($stmt);
 }
+
+// --- LOGIC 2: SIMULATE & LOG AI ROOM SUGGESTION ---
+if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['run_ai'])) {
+    $customerId = $_POST['customerId'];
+    $guests = $_POST['guests'];
+    $budget = $_POST['budget'];
+    $nights = $_POST['nights'];
+    $staffId = $_POST['staffId']; 
+    $suggestionDate = date('Y-m-d');
+    
+    $maxPerNight = $budget / $nights;
+    
+    // FETCH: Grab the RoomNumber so we can display it!
+    $findRoomSql = "SELECT RoomID, RoomNumber FROM ROOM WHERE Status = 'Available' AND PricePerNight <= ? ORDER BY PricePerNight DESC LIMIT 1";
+    $stmt = mysqli_prepare($conn, $findRoomSql);
+    mysqli_stmt_bind_param($stmt, "d", $maxPerNight);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    
+    if ($row = mysqli_fetch_assoc($result)) {
+        $suggestedRoomId = $row['RoomID'];
+        $suggestedRoomNum = $row['RoomNumber']; // Grab the actual room number
+        
+        $logSql = "INSERT INTO ROOM_SUGGESTION_LOG (CustomerID, SuggestedRoomID, ConfirmedByStaff, Guests, PriceRange, SuggestionDate, Outcome) VALUES (?, ?, ?, ?, ?, ?, 'Suggested')";
+        $logStmt = mysqli_prepare($conn, $logSql);
+        mysqli_stmt_bind_param($logStmt, "iiidds", $customerId, $suggestedRoomId, $staffId, $guests, $budget, $suggestionDate);
+        
+        if (mysqli_stmt_execute($logStmt)) {
+            // REDIRECT: Pass the room number into the URL!
+            header("Location: smart_hub.php?status=ai_logged&room=" . $suggestedRoomNum);
+            exit();
+        } else {
+            $message = "<div class='mb-6 rounded-lg border border-red-500 bg-red-500/10 p-4 text-center font-bold text-red-500'>❌ Error logging AI suggestion.</div>";
+        }
+        mysqli_stmt_close($logStmt);
+    } else {
+         $message = "<div class='mb-6 rounded-lg border border-amber-500 bg-amber-500/10 p-4 text-center font-bold text-amber-500'>⚠️ AI Engine Error: No available rooms fit that budget for " . htmlspecialchars($nights) . " nights! ($" . round($maxPerNight, 2) . "/night max)</div>";
+    }
+}
+
+// NOW we load the header
+include 'header.php';
 ?>
 
-<div class="container">
-    <div class="section-title" style="margin-top: 20px;">
-        <h2>Smart Hotel Engine</h2>
-        <p>Manage dynamic pricing algorithms and AI room suggestions</p>
-    </div>
+<header class="mb-8">
+    <h1 class="text-2xl font-bold tracking-tight text-brand-orange">Smart Hotel Engine</h1>
+    <p class="text-sm text-gray-400">Manage dynamic pricing algorithms and AI room suggestions</p>
+</header>
 
-    <?php 
-    if (isset($_GET['status']) && $_GET['status'] == 'rule_added') {
-        echo "<div style='color:#10b981; background:#1e293b; border:1px solid #10b981; padding:15px; border-radius:6px; text-align:center; margin-bottom:20px; font-weight:bold;'>✅ Pricing Rule Activated Successfully!</div>";
+<?php 
+if (isset($_GET['status'])) {
+    if ($_GET['status'] == 'rule_added') {
+        echo "<div class='mb-6 rounded-lg border border-emerald-500 bg-emerald-500/10 p-4 text-center font-bold text-emerald-500'>✅ Pricing Rule Activated Successfully!</div>";
+    } elseif ($_GET['status'] == 'ai_logged' && isset($_GET['room'])) {
+        // DISPLAY: Show the specific room number that matched!
+        $rNum = htmlspecialchars($_GET['room']);
+        echo "<div class='mb-6 rounded-lg border border-brand-orange bg-brand-orange/10 p-4 text-center font-bold text-brand-orange'>🤖 AI Match Generated! Best fit is Room " . $rNum . "</div>";
+    } elseif ($_GET['status'] == 'ai_logged') {
+        // Fallback just in case the room number is missing from URL
+        echo "<div class='mb-6 rounded-lg border border-brand-orange bg-brand-orange/10 p-4 text-center font-bold text-brand-orange'>🤖 AI Room Match Generated & Logged!</div>";
     }
-    echo $message; 
-    ?>
+}
+echo $message; 
+?>
 
-    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;">
-        
-        <div class="card" style="flex: 1; min-width: 300px; border-left: 4px solid #9b59b6;">
-            <h3 style="color: #9b59b6;">Create Dynamic Pricing Rule</h3>
-            <form method="POST" action="smart_hub.php">
-                <div class="form-group">
-                    <input type="text" name="ruleName" class="form-control" placeholder="Rule Name (e.g., Weekend Surge)" required>
-                </div>
-                <div class="form-group">
-                    <input type="text" name="condition" class="form-control" placeholder="Trigger Condition (e.g., Day = Saturday)" required>
-                </div>
-                <div class="form-group">
-                    <input type="number" name="multiplier" class="form-control" placeholder="Surge Multiplier (e.g., 1.20 for 20% increase)" step="0.01" required>
-                </div>
-                <div class="form-group">
-                    <select name="managerId" class="form-control" required>
-                        <option value="" disabled selected>-- Approved By (Manager) --</option>
-                        <?php
-                        if(isset($conn)) {
-                            $mSql = "SELECT StaffID, Name FROM STAFF WHERE Role = 'Manager'";
-                            $mStmt = sqlsrv_query($conn, $mSql);
-                            if ($mStmt !== false) {
-                                while ($mRow = sqlsrv_fetch_array($mStmt, SQLSRV_FETCH_ASSOC)) {
-                                    echo "<option value='".$mRow['StaffID']."'>".$mRow['Name']."</option>";
-                                }
-                            }
-                        }
-                        ?>
-                    </select>
-                </div>
-                <button type="submit" name="add_rule" class="btn-primary" style="background:#9b59b6; color:white; width: 100%;">Activate Rule</button>
-            </form>
-        </div>
-
-        <div class="card" style="flex: 2; min-width: 400px;">
-            <h3>Active Pricing Rules</h3>
-            <table style="width:100%; text-align:left;">
-                <thead>
-                    <tr>
-                        <th>Rule Name</th>
-                        <th>Condition</th>
-                        <th>Multiplier</th>
-                        <th>Approved By</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php
-                    if(isset($conn)) {
-                        $rSql = "SELECT p.RuleName, p.TriggerCondition, p.SurgeMultiplier, p.Status, s.Name AS ManagerName 
-                                 FROM PRICING_RULE p
-                                 JOIN STAFF s ON p.ApprovedByManager = s.StaffID
-                                 ORDER BY p.RuleID DESC";
-                        $rStmt = sqlsrv_query($conn, $rSql);
-
-                        if ($rStmt !== false && sqlsrv_has_rows($rStmt)) {
-                            while ($row = sqlsrv_fetch_array($rStmt, SQLSRV_FETCH_ASSOC)) {
-                                echo "<tr>";
-                                echo "<td><strong>" . htmlspecialchars($row['RuleName']) . "</strong></td>";
-                                echo "<td>" . htmlspecialchars($row['TriggerCondition']) . "</td>";
-                                echo "<td style='color:#ef4444; font-weight:bold;'>x" . htmlspecialchars($row['SurgeMultiplier']) . "</td>";
-                                echo "<td>" . htmlspecialchars($row['ManagerName']) . "</td>";
-                                echo "<td style='color:#10b981; font-weight:bold;'>" . htmlspecialchars($row['Status']) . "</td>";
-                                echo "</tr>";
-                            }
-                        } else {
-                            echo "<tr><td colspan='5' style='text-align:center; color:#94a3b8;'>No pricing rules active. Base prices apply.</td></tr>";
-                        }
-                    }
-                    ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="card" style="margin-top: 20px;">
-        <h3>AI Room Suggestion Log</h3>
-        <table style="width:100%; text-align:left;">
-            <thead>
-                <tr>
-                    <th>Log ID</th>
-                    <th>Date</th>
-                    <th>Customer</th>
-                    <th>Suggested Room</th>
-                    <th>Guests / Price Range</th>
-                    <th>Staff Confirmed</th>
-                    <th>Outcome</th>
-                </tr>
-            </thead>
-            <tbody>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <section class="col-span-1 rounded-lg border border-navy-700 bg-navy-900 p-6 shadow-sm">
+        <h3 class="mb-4 font-bold text-brand-orange border-b border-navy-700 pb-2">Create Dynamic Pricing</h3>
+        <form method="POST" action="smart_hub.php" class="space-y-4">
+            <input type="text" name="ruleName" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white" placeholder="Rule Name" required>
+            <input type="text" name="condition" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white" placeholder="Condition (e.g. Day = Sat)" required>
+            <input type="number" step="0.01" name="multiplier" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white" placeholder="Multiplier (1.20)" required>
+            <select name="managerId" class="w-full rounded-md border border-navy-700 bg-navy-800 p-2 text-white" required>
+                <option value="" disabled selected>-- Approved By --</option>
                 <?php
-                if(isset($conn)) {
-                    $sSql = "SELECT l.SuggestionID, l.SuggestionDate, c.Name AS CustomerName, r.RoomNumber, 
-                                    l.Guests, l.PriceRange, l.Outcome, s.Name AS StaffName
-                             FROM ROOM_SUGGESTION_LOG l
-                             JOIN CUSTOMER c ON l.CustomerID = c.CustomerID
-                             JOIN ROOM r ON l.SuggestedRoomID = r.RoomID
-                             JOIN STAFF s ON l.ConfirmedByStaff = s.StaffID
-                             ORDER BY l.SuggestionID DESC";
-                    $sStmt = sqlsrv_query($conn, $sSql);
+                $mRes = mysqli_query($conn, "SELECT StaffID, Name FROM STAFF WHERE Role = 'Manager'");
+                while ($m = mysqli_fetch_assoc($mRes)) echo "<option value='{$m['StaffID']}'>{$m['Name']}</option>";
+                ?>
+            </select>
+            <button type="submit" name="add_rule" class="w-full bg-brand-orange text-navy-900 font-bold py-2 rounded">Activate Rule</button>
+        </form>
+    </section>
 
-                    if ($sStmt !== false && sqlsrv_has_rows($sStmt)) {
-                        while ($row = sqlsrv_fetch_array($sStmt, SQLSRV_FETCH_ASSOC)) {
-                            echo "<tr>";
-                            echo "<td>#" . htmlspecialchars($row['SuggestionID']) . "</td>";
-                            echo "<td>" . htmlspecialchars($row['SuggestionDate']->format('Y-m-d')) . "</td>";
-                            echo "<td>" . htmlspecialchars($row['CustomerName']) . "</td>";
-                            echo "<td>Room " . htmlspecialchars($row['RoomNumber']) . "</td>";
-                            echo "<td>" . htmlspecialchars($row['Guests']) . " Guests / $" . htmlspecialchars($row['PriceRange']) . "</td>";
-                            echo "<td>" . htmlspecialchars($row['StaffName']) . "</td>";
-                            
-                            $outcomeColor = ($row['Outcome'] == 'Booked') ? '#10b981' : '#f59e0b';
-                            echo "<td style='color:".$outcomeColor."; font-weight:bold;'>" . htmlspecialchars($row['Outcome']) . "</td>";
-                            echo "</tr>";
-                        }
-                    } else {
-                        echo "<tr><td colspan='7' style='text-align:center; color:#94a3b8;'>No AI suggestions logged yet.</td></tr>";
-                    }
+    <section class="col-span-2 rounded-lg border border-navy-700 bg-navy-900 overflow-hidden shadow-sm">
+        <div class="bg-navy-800 p-4 border-b border-navy-700 font-bold text-brand-orange">Active Pricing Rules</div>
+        <table class="w-full text-left text-sm text-gray-300">
+            <thead class="bg-navy-900 text-xs uppercase">
+                <tr><th class="p-3">Rule</th><th class="p-3">Condition</th><th class="p-3">Multiplier</th><th class="p-3">Status</th></tr>
+            </thead>
+            <tbody class="divide-y divide-navy-700">
+                <?php
+                $rRes = mysqli_query($conn, "SELECT RuleName, TriggerCondition, SurgeMultiplier, Status FROM PRICING_RULE ORDER BY RuleID DESC");
+                while ($row = mysqli_fetch_assoc($rRes)) {
+                    echo "<tr class='hover:bg-navy-800'><td class='p-3 font-bold text-white'>{$row['RuleName']}</td><td class='p-3'>{$row['TriggerCondition']}</td><td class='p-3 text-red-500 font-bold'>x{$row['SurgeMultiplier']}</td><td class='p-3 text-emerald-500'>{$row['Status']}</td></tr>";
                 }
                 ?>
             </tbody>
         </table>
-    </div>
+    </section>
 </div>
+
+<section class="mt-8 rounded-lg border border-navy-700 bg-navy-900 p-6 shadow-sm">
+    <h3 class="mb-4 font-bold text-brand-orange border-b border-navy-700 pb-2">AI Room Matcher</h3>
+    <form method="POST" action="smart_hub.php" class="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <select name="customerId" class="rounded-md border border-navy-700 bg-navy-800 p-2 text-white" required>
+            <option value="" disabled selected>Customer</option>
+            <?php 
+            $cRes = mysqli_query($conn, "SELECT CustomerID, Name FROM CUSTOMER");
+            while($c = mysqli_fetch_assoc($cRes)) echo "<option value='{$c['CustomerID']}'>{$c['Name']}</option>";
+            ?>
+        </select>
+        
+        <select name="staffId" class="rounded-md border border-navy-700 bg-navy-800 p-2 text-white" required>
+            <option value="" disabled selected>Staff</option>
+            <?php 
+            // Only selects staff who have the role of Manager or Receptionist
+            $sRes = mysqli_query($conn, "SELECT StaffID, Name FROM STAFF WHERE Role IN ('Manager', 'Receptionist')");
+            while($s = mysqli_fetch_assoc($sRes)) echo "<option value='{$s['StaffID']}'>{$s['Name']}</option>";
+            ?>
+        </select>
+        
+        <input type="number" name="guests" placeholder="Guests" class="rounded-md border border-navy-700 bg-navy-800 p-2 text-white" required>
+        <input type="number" name="nights" placeholder="Nights" class="rounded-md border border-navy-700 bg-navy-800 p-2 text-white" required>
+        <input type="number" name="budget" placeholder="Budget" class="rounded-md border border-navy-700 bg-navy-800 p-2 text-white" required>
+        <button type="submit" name="run_ai" class="bg-brand-blue text-white font-bold py-2 rounded">Match</button>
+    </form>
+</section>
 
 <?php include 'footer.php'; ?>
