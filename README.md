@@ -1,13 +1,20 @@
-# OASIS Hotel Management System
-A dynamic, database-driven hospitality management system built with PHP and SQL Server. 
+OASIS Hotel CRM & Operations System
+A comprehensive, database-driven Customer Relationship Management (CRM) and hospitality operations platform. This system is engineered to streamline hotel management, optimize revenue through dynamic pricing, and enhance guest retention via automated loyalty tracking.
 
-## Features
-* Normalized relational database architecture (12+ Tables)
-* Dynamic Surge Pricing Algorithms
-* Automated Customer Loyalty Program & Discounts
-* Maintenance Ticket & Staff Workflow
-* Live Data Dashboard
+Core Features
+Guest Relationship Management: Automated customer loyalty programs and tier-based discount tracking.
 
-## Tech Stack
-* **Frontend:** HTML, CSS, PHP
-* **Backend Database:** Microsoft SQL Server
+Dynamic Surge Pricing: Custom algorithms that adjust room rates based on real-time availability and demand.
+
+Advanced Database Architecture: Highly normalized relational database (12+ tables) designed for data integrity and complex querying.
+
+Operations Workflow: Integrated maintenance ticketing and staff management modules.
+
+Analytics & Reporting: Live data dashboard providing real-time insights into hotel performance and CRM metrics.
+
+Tech Stack
+Frontend: HTML5, Tailwind CSS
+
+Backend: PHP
+
+Database: Microsoft SQL Server (MS SQL)
